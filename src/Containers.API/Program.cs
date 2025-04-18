@@ -1,4 +1,14 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Containers.Application;
+using Containers.Models;
+
 var builder = WebApplication.CreateBuilder(args);
+
+
+var connectionString = builder.Configuration.GetConnectionString("UniversityDatabase");
+builder.Services.AddTransient<IContainerService, ContainerService>(
+    _ => new ContainerService(connectionString));
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -16,29 +26,64 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
+app.MapGet("/api/containers", (IContainerService containerService) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
+    try
     {
-        var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-            .ToArray();
-        return forecast;
-    })
-    .WithName("GetWeatherForecast")
-    .WithOpenApi();
+        return Results.Ok(containerService.GetAllContainers());
+    }
+    catch (Exception e)
+    {
+        return Results.Problem(e.Message);
+    }
+});
+
+app.MapPost("/api/containers", (IContainerService containerService, Container container) =>
+{
+    // try
+    // {
+    //     return Results.Ok(containerService.Create(container));
+    // }
+    // catch (Exception e)
+    // {
+    //     return Results.Problem(e.Message);
+    // }
+    var result = containerService.Create(container);
+    if (result is true)
+    {
+        return Results.Created();
+    }
+    else
+    {
+        return Results.Problem();
+    }
+});
+
+app.MapPost("/api/custom-containers", async (IContainerService containerService, HttpRequest request) =>
+{
+    using (var reader = new StreamReader(request.Body))
+    {
+        string rawJson = await reader.ReadToEndAsync();
+        var json = JsonNode.Parse(rawJson);
+        var specifiedType = json["type"];
+        if (specifiedType != null && specifiedType.ToString() == "Standard")
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+            };
+            
+            var containerInfo = JsonSerializer.Deserialize<ShortContainerInfo>(json["typeValue"], options);
+        }
+        
+    }
+});
+
+class ShortContainerInfo
+{
+    public bool IsHazardous { get; set; }
+    public string Name { get; set; }
+}
+
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
